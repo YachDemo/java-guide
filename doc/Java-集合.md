@@ -440,160 +440,35 @@ person3
 
 jdk1.8之前```HashMap```是**数组和链表**结合在一起使用也就是**链表散列**。**HashMap通过key的hashCode经过扰动函数处理过后得到hash值，然后通过(n-1) & hash 判断当前元素存放的位置(这里n指的是数组的长度)，如果当前存在元素的话，就判断该元素与要存入的元素的hash值以及key是否相同，如果相同的话，则直接覆盖，不同的话通过拉链法解决冲突。**
 
-所谓扰动函数
+**所谓扰动函数就是HashMap的hash方法。使用hash方法也就是扰动函数是为了防止一些实现比较差的hashCode()方法 换句话说使用扰动函数可以减少碰撞。**
 
-```json
-C:\Java\jdk1.8.0_191\bin\java.exe -agentlib:jdwp=transport=dt_socket,address=127.0.0.1:57783,suspend=y,server=n -javaagent:C:\Users\Administrator\AppData\Local\JetBrains\IntelliJIdea2020.2\captureAgent\debugger-agent.jar -Dfile.encoding=UTF-8 -classpath C:\Users\Administrator\AppData\Local\Temp\classpath706231261.jar com.sunsco.tool.utils.BaiduMapServiceSDK
-Connected to the target VM, address: '127.0.0.1:57783', transport: 'socket'
-16:52:39.013 [main] DEBUG org.springframework.web.client.RestTemplate - HTTP GET http://api.map.baidu.com/place_abroad/v1/suggestion?query=%E6%9B%BC%E5%85%8B%E9%A0%93&region=%E6%BE%B3%E9%97%A8&output=json&ak=Zfn6nMSk5Ca18AAcmFvqvxF91ZgSIswO
-16:52:39.033 [main] DEBUG org.springframework.web.client.RestTemplate - Accept=[text/plain, application/json, application/cbor, application/*+json, */*]
-16:52:39.042 [main] DEBUG org.springframework.web.client.RestTemplate - Writing [{}] as "application/x-www-form-urlencoded"
-16:52:39.171 [main] DEBUG org.springframework.web.client.RestTemplate - Response 200 OK
-16:52:39.172 [main] DEBUG org.springframework.web.client.RestTemplate - Reading to [java.lang.String] as "text/javascript;charset=utf-8"
-{
-    "status":0,
-    "message":"ok",
-    "result":[
-        {
-            "name":"曼克顿(第一座)",
-            "location":{
-                "lat":22.160131,
-                "lng":113.571005
-            },
-            "uid":"5dfffd00290410696e3e1b7c",
-            "city":"澳门特别行政区",
-            "district":"氹仔岛",
-            "business":"",
-            "cityid":"2911",
-            "tag":"西餐厅",
-            "address":"澳门特别行政区嘉模堂区孙逸仙博士大马路西50米"
-        },
-        {
-            "name":"曼克顿山",
-            "location":{
-                "lat":22.338182,
-                "lng":114.153847
-            },
-            "uid":"45a662c38714679d54bfffa4",
-            "city":"香港特别行政区",
-            "district":"深水埗区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"住宅区",
-            "address":"香港特别行政区深水埗区宝轮街1号"
-        },
-        {
-            "name":"曼克顿广场",
-            "location":{
-                "lat":22.323182,
-                "lng":114.221323
-            },
-            "uid":"acb68f99efe223dd0a1cc76e",
-            "city":"香港特别行政区",
-            "district":"观塘区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"写字楼",
-            "address":"香港特别行政区九龙观塘区湾宏泰道23号"
-        },
-        {
-            "name":"曼克顿",
-            "location":{
-                "lat":22.316189,
-                "lng":114.235902
-            },
-            "uid":"6ec7452194fb88054acc4a6b",
-            "city":"香港特别行政区",
-            "district":"观塘区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"西餐厅",
-            "address":"香港观塘"
-        },
-        {
-            "name":"曼克顿花园",
-            "location":{
-                "lat":22.232084,
-                "lng":114.228519
-            },
-            "uid":"81f5a38ab6f2d35bad31e5e3",
-            "city":"香港特别行政区",
-            "district":"南区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"住宅区",
-            "address":"香港南区赤柱大潭道33号"
-        },
-        {
-            "name":"曼克顿大厦",
-            "location":{
-                "lat":22.242861,
-                "lng":114.200678
-            },
-            "uid":"5aee51367f6bf160f4b91685",
-            "city":"香港特别行政区",
-            "district":"南区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"住宅区",
-            "address":"香港特别行政区南区浅水湾道63号"
-        },
-        {
-            "name":"曼克顿 裁缝",
-            "location":{
-                "lat":22.306162,
-                "lng":114.183458
-            },
-            "uid":"429b02aa0c0014f8b7147f4c",
-            "city":"香港特别行政区",
-            "district":"油尖旺区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"裁缝店",
-            "address":"曼克顿 裁缝 Mercantile House, Unit E, Ground Opposite Tsim Sha "
-        },
-        {
-            "name":"曼克顿山5座",
-            "location":{
-                "lat":22.338436,
-                "lng":114.153972
-            },
-            "uid":"6ef28d331bdd32f0f6e73b36",
-            "city":"香港特别行政区",
-            "district":"深水埗区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"写字楼",
-            "address":"香港特别行政区深水埗区荔枝角宝轮街1号"
-        },
-        {
-            "name":"Jag - 曼克顿山会所餐厅",
-            "location":{
-                "lat":22.337466,
-                "lng":114.153939
-            },
-            "uid":"0b555e14d240c06420026255",
-            "city":"香港特别行政区",
-            "district":"深水埗区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"西餐厅",
-            "address":"油尖旺区荔枝角宝轮街1号曼克顿山会所5楼"
-        },
-        {
-            "name":"曼克顿照明",
-            "location":{
-                "lat":22.280259,
-                "lng":114.191438
-            },
-            "uid":"15055a9cb51b7a184107c19b",
-            "city":"香港特别行政区",
-            "district":"湾仔区",
-            "business":"",
-            "cityid":"2912",
-            "tag":"家居建材",
-            "address":"湾仔"
-        }
-    ]
+**JDK1.8 HashMap的hash方法源码：**
+
+JDk1.8的hash方法相比于JDK1.7hash方法更加简化，但是原理不变。
+
+```java
+static final int hash(Object key) {
+    int h;
+    // key.hashCode():返回散列值也就是hashCode
+    // ^ ：按位异或
+    // >>> ：无符号右移，空位都以0补齐
+    return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16)
 }
 ```
+
+对比一下JDK1.7的HashMap的hash方法源码
+
+```java
+static int hash(int h) {
+    // This function ensures that hashCodes that differ only by
+    // constant multiples at each bit position have a bounded
+    // number of collisions (approximately 8 at default load factor).
+
+    h ^= (h >>> 20) ^ (h >>> 12);
+    return h ^ (h >>> 7) ^ (h >>> 4);
+}
+```
+
+相比于JDK1.8的hash方法，JDK1.7的hash方法的性能可能会稍微差一点点，毕竟扰动了4次。
+
+所谓**拉链法**就是：将链表和数组结合。也就是一个链表数组，数组中的每一格就是一个链表。若遇到hash冲突，则将冲突的值加到链表中即可
