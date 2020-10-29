@@ -32,4 +32,26 @@ synchronized void method() {
 }
 ```
 
-2.**修饰静态方法：** 也就是给当前类加锁，会作用类的所有对象实例，进入同步代码前
+2.**修饰静态方法：** 也就是给当前类加锁，会作用类的所有对象实例，进入同步代码前要获得**当前class的锁**。因为静态成员不属于任何一个实例对象，是类成员（static表名该类是个静态资源，不管new多少个对象，只有一份）。所以，如果一个线程A调用一个实例对象非静态```synchronized```方法，而线程B需要调用这个实例对象所属类的静态```synchronized```是允许的，不会发生互斥现象，**因为访问静态```synchronized```方法占用的锁是当前类的锁，而非访问非静态```synchronized```方法占用的是当前实例对象的锁**
+
+```java
+synchronized void static method(){
+    // 业务代码
+}
+```
+
+3.**修饰代码块：** 指定加锁对象，给指定的类/对象加锁。```synchronized(this|object)```表示进入同步代码库前要获得**给定对象的锁**。```synchronized(类.class)```表示进入同步代码前要获得**当前class的锁**
+
+```java
+synchronized(this){
+    // 业务代码
+}
+```
+
+**总结：**
+
+- ```synchronized```关键字加到```static```静态方法和```synchronized(class)```代码块上都是给Class类上锁。
+- ```synchronized```关键字加到实例方法上就是给对象实例上锁。
+- 尽量不要用```synchronized(String a)```因为JVM中，字符串常量具有缓存功能
+
+下面我以一个常见的面试题为例讲解一下```synchronized```关键字的具体使用

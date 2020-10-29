@@ -1,6 +1,6 @@
 package com.example.main;
 
-import lombok.extern.slf4j.Slf4j;
+//import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,7 +13,7 @@ import java.util.function.Function;
  * @version v1.0
  * Create by 2020-10-14 9:48
  **/
-@Slf4j
+//@Slf4j
 public class Person {
 
     private Integer age;
