@@ -166,4 +166,484 @@ JDK1.6对锁的实现引入了大量的优化，如偏量锁，轻量级锁，�
 
 #### synchronized依赖于JVM而ReentrantLock依赖于API
 
-```synchronized```是依赖于JVM实现的，前面我们也讲到了虚拟机团队在JDK1.6为```synchronized```关键字做了很多优化，但是这些优化都是在虚拟机层面实现的，并没有直接暴露给我们。ReentrantLock
+```synchronized```是依赖于JVM实现的，前面我们也讲到了虚拟机团队在JDK1.6为```synchronized```关键字做了很多优化，但是这些优化都是在虚拟机层面实现的，并没有直接暴露给我们。ReentrantLock是JDK层面实现的（也就是api层面，需要lock()和unlock()方法配合try/finally语句块来实现），所以我们可以通过查看它的源码，来看它如何实现的。
+
+#### ReetrantLock比synchronized增加了一些高级功能
+
+相比于```synchronized```，```ReetrantLock```增加了一些高级功能。主要来说主要有三点
+
+- **等待可中断：** ```ReetrantLock```提供了一种能够中断锁等待的线程机制。通过```lock.lockInterruptibly();```来实现这个机制。也就是说正在等待的线程可以选择放弃等待，改为处理其他事情。
+- **可实现公平锁：** ```ReetrantLock```可以指定是公平锁还是非公平锁。而```synchronized```只能是非公平锁。所谓公平锁就是先等待线程先获取锁。```ReetrantLock```默认是非公平的，可以通过```ReetrantLock```类的```ReentrantLock(boolean fair)```构造方法来指定实现是否公平
+- **可实现选择性通知（锁可以绑定多个条件）：** ```synchronized```关健字与```wait()```和```notify()/notifyAll()```方法结合可以实现等待/通知机制。```ReetrantLock```类当然也可以实现，但是需要借助```Condition```接口与```newCondition()```方法
+
+> ```Condition```是JDK1.5才有的，它具有很好的灵活性，比如实现多路通知功能也就是在一个Lock对象中可以创建多个```Condition```实例（即对象监视器）。**线程对象可以注册在指定的```Condition```中，从而可以有选择性的进行线程通知，在调度线程上更加灵活。在使用```notify()/notifyAll()```方法进行通知时，被通知的线程是由JVM选择的，用```ReetrantLock```类结合```Condition```实例可以实现选择性通知**，这个功能非常重要，而且是```Condition```接口默认提供的。而```synchronized```关键字就相当于整个Lock对象中只有一个```Condition```实例，所有线程都注册在它一个身上。如果执行```notifyAll()```方法的话就会通知所有处于等待状态的线程，这样会造成很大的效率问题，而```Condition```实例的```signalAll()```方法则只会唤醒注册在该```Condition```实例中的所有等待线程。
+
+**如果你想使用上述功能，那么选择ReetrantLock是一个不错的选择。性能已不是选择标准。**
+
+## volatile关键字
+
+我们先从**CPU缓存模型**说起
+
+### CPU缓存模型
+
+**为什么要弄一个CPU高速缓存呢？**
+
+类似于我们开发网站后台用的缓存（比如Redis）是为了解决程序处理速度和访问常规关系型数据库速度不对等的问题。**CPU缓存则是为了解决CPU处理速度和缓存处理速度不对等的问题**
+
+我们甚至可以把**内存看作外存的高速缓存**，程序运行的时候我们把外存的数据复制带内存，由于内存的处理速度远远高于外存，这样就提高了处理速度。
+
+总结：**CPU Cache缓存是内存数据用于解决CPU处理速度和内存不匹配的问题，内存缓存的是硬盘数据用于解决硬盘访问速度过慢的问题。**
+
+为了更好的理解，我画了一个简单的CPU Cache示意图如下:(实际上，现代CPU Cache通常分为三层，分别叫L1，L2，L3 Cache)
+
+![CPU](https://guide-blog-images.oss-cn-shenzhen.aliyuncs.com/2020-8/303a300f-70dd-4ee1-9974-3f33affc6574.png)
+
+**CPU Cache的工作方式：**
+
+先复制一份数据到CPU Cache中，当CPU需要用到的时候直接从CPU Cache中读取数据，当运算完成后，再将运算得到的数据写回Main Memory中。但是，这样同样存在**内存缓存不一致的问题**比如我执行一个i++操作的话，如果两个线程同时执行的的话，假设两个线程从CPU Cache中读取i=1，两个线程做了i++运算完之后在写回Main Memory之后i=2，而正确结果为i=3。
+
+**CPU为了解决内存缓存不一致问题可以通过制定缓存协议或者其他手段来解决。**
+
+### 讲一下JMM（Java内存模型）
+
+在JDK1.2之前，Java内存模型实现总是从**主存**（即共享内存）读取变量，是不需要特别注意的。而在当前的Java内存模型下，线程可以把变量保存在**本地内存**（比如机器的寄存器中），而不是直接从主存中进行读写。这就造成了一个线程在主存中修改了一个变量的值，而另外一个线程还在继续使用它在寄存器中的变量值的拷贝，造成**数据的不一致**
+
+![模型](https://guide-blog-images.oss-cn-shenzhen.aliyuncs.com/2020-8/0ac7e663-7db8-4b95-8d8e-7d2b179f67e8.png)
+
+要解决这个问题，就需要把变量声明为```volatile```，这就指示JVM，这个变量是共享且不稳定的，每次使用它都是到主存中进行读取。
+
+**所以，```volatile```关健字除了防止JVM的指令重排，还有一个重要作用就是保证变量可见性。**
+
+![volatile模型](https://guide-blog-images.oss-cn-shenzhen.aliyuncs.com/2020-8/d49c5557-140b-4abf-adad-8aac3c9036cf.png)
+
+### 并发的编程的三个重要特性
+
+1. **原子性：**一个操作或者多次操作，要么所有的操作全部得到执行并且不会收到任何因素的干扰而中断，要么所有操作都执行，要么都不执行。```synchronized```可以保证代码片段的原子性
+1. **可见性：**当一个变量对共享变量进行了修改，那么了另外的线程都是立即可以看到修改后的最新值。```volatile```关键字可以保证共享变量的可见性
+1. **有序性：**代码在执行过程中的先后顺序，java在编译器以及运行期间的优化，代码的执行顺序未必就是编写代码时候的顺序。```volatile```关键字可以禁止指令进行重排序优化。
+
+### 说说synchronized关键字和volatile关键字的区别
+
+```synchronized```和```volatile```是两个互补的存在，而不是对立的存在
+
+- **```volatile```关键字**是线程同步的**轻量级实现**，所以**volatile性能肯定是比synchronized关键字要好**。但是**volatile关键字只能用于变量而```synchronized```关键字可以修饰方法以及代码块**
+- **volatile关键字能保证数据的可见性，但不能保证数据的原子性。synchronized两者都能保证**
+- **volatile关键字主要用于解决变量在多个线程之间的可见性，而synchronized关键字解决的是多个线程之前访问资源的同步性**
+
+## ThreadLocal
+
+### ThreadLocal简介
+
+通常情况下，我们创建的变量是可以被任何一个线程访问并修改的。如果想实现每一个线程都有自己的本地专属变量该任何解决呢？JDK中提供的ThreadLocal类正是为了解决这样的问题。**```ThreadLocal```类主要解决的就是让每个线程绑定自己的值，可以将ThreadLocal类形象的比喻成存放数据的盒子，盒子中可以存储每个线程的私有数据。**
+
+**如果你创建了一个```ThreadLocal```变量，那么访问这个变量的每个线程都会有这个变量的本地副本，这也是```ThreadLocal```变量名的由来。他们可以使用```get()```和```set()```方法来获取默认值或将其值改为当前线程所存的副本的值。从而避免了线程安全的问题。**
+
+### ThreadLocal原理
+
+从```Thread```类源代码入手
+
+```java
+public class Thread implements Runnable {
+    ......
+    //与此线程有关的ThreadLocal值。由ThreadLocal类维护
+    ThreadLocal.ThreadLocalMap threadLocals = null;
+
+
+
+    //与此线程有关的InheritableThreadLocal值。由InheritableThreadLocal类维护
+    ThreadLocal.ThreadLocalMap inheritableThreadLocals = null;
+    ......
+}
+```
+
+从上面```Thread```类源代码可以看出```Thread```类中有一个```threadLocals```和一个```inheritableThreadLocals```变量，他们都是```ThreadLocalMap```类型的变量，我们可以把```ThreadLocalMap```理解成```ThreadLocal```类实现的定制化的HashMap。默认情况下这两个变量都是null，只有当前线程调用ThreadLocal类的set或get方法时才创建他们，实际上调用这两个方法的时候，我们调用的是```ThreadLocalMap```的```get()```、```set()```方法。
+
+```ThreadLocal```类的```set()```方法
+
+```java
+public void set(T value) {
+    Thread t = Thread.currentThread();
+    ThreadLocalMap map = getMap(t);
+    if(map != null) {
+        map.set(this, value);
+    } else {
+        createMap(t, value);
+    }
+}
+ThreadLocalMap getMap(Thread t) {
+    return t.threadLocals;
+}
+```
+
+通过上面这些内容，我们足可以通过猜测得出结论：**最终的变量是放在了当前线程的```ThreadLocalMap```中，而不是存在```ThreadLocal```上，```ThreadLocal```可以理解为只是```ThreadLocalMap```的封装，传递了变量值。**```ThreadLocal```类中可以通过```Thread.currentThread()```获取到当前线程对象后，直接通过```getMap(Thread t)```可以访问到该线程的```ThreadLocalMap```对象。
+
+**每个Thread中都具备一个ThreadLocalMap，而ThreadLocalMap可以存储以ThreadLocal为key，Object对象为value的键值对。**
+
+```java
+ThreadLocalMap(ThreadLocal<?> firstKey, Object firstValue){
+    .....
+}
+```
+
+比如我们在同一个线程中声明了两个```ThreadLocal```对象的话，会使用```Thread```内部都是使用那个仅有那个```ThreadLocalMap```存放数据的，```ThreadLocalMap```的key就是```ThreadLocal```对象，value就是调用```ThreadLocal```对象调用set方法设置的值
+
+### ThreadLocal内存泄漏问题
+
+```ThreadLocalMap```中使用的key为```ThreadLocal```的弱引用。所以，如果```ThreadLocal```没有被外部强引用的的情况下，在垃圾回收的时候，key会被清理掉，而value不会被清理掉，这样一来，```ThreadLocalMap```就会出现key为null的Entry。假如我们不做任何措施的话，value永远无法被GC回收，这个时候可能会产生内存泄漏。```ThreadLocalMap```实现中已经考虑了这种情况，在调用```set()、get()、remove()```的时候，会清理掉key为null的记录。使用完```ThreadLocal```后最好手动调用```remove()```方法
+
+```java
+static class Entry extends WeakReference<ThreadLocal<?>> {
+    /** The value associated with this ThreadLocal. */
+    Object value;
+
+    Entry(ThreadLocal<?> k, Object v) {
+        super(k);
+        value = v;
+    }
+}
+```
+
+**弱引用介绍：**
+
+> 如果一个对象具有弱引用，那就类似于**可有可无的生活用品**。弱引用与软引用的区别在于：只具有弱引用的对象拥有更短暂的生命周期。在垃圾回收器线程扫描它所管辖的内存区域过程中，一旦发现了只局域弱引用的对象，不管当前内存空间是否足够与否，都会回收它的内存，不过，由于垃圾回收器是一个优先级很低的线程，因此不一定很快发现那些只具有弱引用的对象</br></br>弱引用可以和一个引用队列(ReferenceQueue)联合使用，如果弱引用所引用的对象被垃圾回收，Java虚拟机就会把这个弱引用加入到与之关联的引用队列中去
+
+## 线程池
+
+### 为什么要使用线程池
+
+> **池化技术大家已经屡见不鲜了，线程池，数据库连接池，Http连接池等等都是对这个思想的应用。池化技术的思想主要是为了减少每次获取资源的开销，提高对资源的利用率。**
+
+**线程池**提供看一种限制和管理资源（包括执行了一个任务）。每个**线程池**还维护了一些基本统计信息，例如已经完成任务数量。
+
+这里借用《java并发编程艺术》提到的来说一下**使用线程池的好处：**
+
+- **降低资源消耗**。通过重复利用已创建的的线程降低线程创建和销毁造成的损耗。
+- **提高响应速度**。当任务到达时，任务可以不需要等到线程创建就能立即执行。
+- **提高线程的可管理性**。线程是稀缺资源，如果无限制的创建，不仅会消耗系统资源，还会降低系统的稳定性，使用线程池可以进行统一的分配，调优和监控
+
+### 实现Runnable接口和Callable接口的区别
+
+```Runnable```自Java1.0来一直存在，但```Callable```仅在Java1.5中引用，目的就是为了处理```Runnable```不支持的用例。**```Runnable```接口不会返回结果活或抛出检查异常，但```Callable```接口可以。所以，如果任务不需要返回结果或者抛出异常推荐使用```Runnable```接口**，这样代码看起来更简洁
+
+工具类```Executors```可以实现```Runnable```对象和```Callable```对象之间的相互转换（```Executors.callable(Runnable task)```或```Executors.callable(Runnable task，Object resule)```）。
+
+```Runnable.java```
+
+```java
+@FunctionalInterface
+public interface Runnable {
+    /**
+     * 线程被执行时，没有返回值时也无法返回异常
+     */
+    public abstract void run();
+}
+```
+
+```Callable.java```
+
+```java
+@FunctionalInterface
+public interface Callable<V> {
+    /**
+     * 计算结果，或在无法这样做时抛出异常。
+     * @return 计算得出的结果
+     * @throws 如果无法计算结果，则抛出异常
+     */
+    V call() throws Exception;
+}
+```
+
+### 执行execute()方法和submit()方法的区别是什么
+
+1. **```execute()```方法用于提交不需要返回值的任务，所以无法判断任务是否被线程池执行成功与否；**
+1. **```submit()```方法用于提交需要返回值的任务。线程池会返回一个```Future```类型的对象，通过这个```Future```对象可以判断任务是否执行成功**，并且可以通过```Future```的```get()```方法来获取返回值，```get()```方法会阻塞当前线程直到任务完成，而使用```get(long timeout, TimeUnit unit)```方法会阻塞当前线程一段时间后立即执行，这时候有可能没有执行完。
+
+我们以```AbstractExecutorService```接口中一个submit方法为例子来看看源码：
+
+```java
+public Future<?> submit(Runnable task) {
+    if (task == null) throw new NullPointException();
+    RunnableFuture<Void> ftask = newTaskFor(task, null);
+    execute(ftask);
+    return ftask;
+}
+```
+
+上面方法调用```newTaskFor```方法返回一个```FutureTask```对象。
+
+```java
+protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
+    return new FutureTask<T>(runnable, value);
+}
+```
+
+我们再来看看```execute```方法
+
+```java
+public void execute(Runnabel command) {
+    ...
+}
+```
+
+### 如何创建线程池
+
+《阿里巴巴Java开发手册》中强制不能使用Executors去创建，而是通过ThreadPoolExector的方式，这样处理方式让写的同学更加明确线程池的运行规则，规避资源耗尽的风险
+
+> Executors返回线程池的弊端如下：
+>
+> - FixedThreadPool和SingleThreadExecutor：允许请求队列长度为Integer.MAX_VALUE，可能堆积大量的请求，从而导致OOM
+> - CachedThreadPool和ScheduledThreadPool；允许创建的线程数量为Integer.MAX_VALUE，可能创建大量线程，从而导致OOM
+
+### ThreadPoolExecutor类分析
+
+```ThreadPoolExecutor```类中提供的四个构造方法。我们来看最长的那个，其余三个都是在这个构造方法的基础上产生的（其他几个构造方法说白点都是给某些默认参数的的构造方法比如默认制定拒绝策略是什么）
+
+```java
+/**
+ * 用给定的初始参数创建一个新的ThreadPoolExecutor.
+ */
+public ThreadPoolExecutor(int corePoolSize,
+                          int maximumPoolSize,
+                          long keepAliveTime,
+                          TimeUnit unit,
+                          BlockingQueue<Runnable> wordQueue,
+                          ThreadFactory threadFactory,
+                          RejectedExecutionHandler handler) {
+    if(corePoolSize < 0 || maximumPoolSize <= 0 || maximumPoolSize < corePoolSize || keepAliveTime < 0)
+           throw new IllegalArgumentException();
+    if (workQueue == null || threadFactory == null || handler == null)
+           throw new NullPointerException();
+     this.corePoolSize = corePoolSize;
+     this.maximumPoolSize = maximumPoolSize;
+     this.workQueue = workQueue;
+     this.keepAliveTime = unit.toNanos(keepAliveTime);
+     this.threadFactory = threadFactory;
+     this.handler = handler;
+}
+```
+
+**下面这些对创建非常重要，在后面使用线程池的过程中你一定会用到！所以，务必拿着小本本记好。**
+
+#### ```ThreadPoolExecutor```构造函数重要参数分析
+
+**```ThreadPoolExecutor```3个最重要的参数**
+
+- ```corePoolSize```：核心线程数，线程定义了最小可以同时运行的线程数量。
+- ```maximumPoolSize```：当队列中存放的任务达到队列容量的时候，当前可以同时运行的线程数量变为最大线程数。
+- ```workQueue```：当新任务来的时候会判断当前运行的线程数量是否达到核心线程数，如果达到的话，新任务就会存放到队列中
+
+```ThreadPoolExecutor```其他常见参数：
+
+1. ```keepAliveTime```:当线程池中线程数量大于corePoolSize的时候，如果这时没有新的任务提交，核心线程外的线程不会立即销毁，而是会等待，直到时间超过```keepAliveTime```才会被回收销毁；
+1. ```unit```：keepAliveTime的时间单位。
+1. ```threadFactory```：executor创建新的线程时会用到
+1. ```handler```：饱和策略。关于饱和策略下面单独介绍一下。
+
+#### ```ThreadPoolExecutor```饱和策略
+
+**```ThreadPoolExecutor```饱和策略的定义：**
+
+如果当时同时运行的线程数量达到最大线程数并且队列也被放满时，```ThreadPoolExecutor```定义了一些策略：
+
+- **```ThreadPoolExecutor.AbortPolicy```**:抛出```RejectedExecutionException```来拒绝新任务的处理
+- **```ThreadPoolExecutor.CallerRunsPolicy```**:调用执行自己的线程运行任务，也就是直接在调用```executor```方法的线程中运行（```run```）被拒绝的任务，如果执行程序已关闭，则会丢弃该任务。因此这个策略会降低对于新任务的提交速度，影响程序的整体性能。如果您的应用程序可以承受此延迟并且你要要求任何一个任务请求都要被执行的话，你可以选择这个策略。
+- **```ThreadPoolExecutor.DiscardPolicy```**：不处理新任务，直接丢弃。
+- **```ThreadPoolExecutor.DiscardOldestPolicy```**：此策略将丢弃最早未处理的任务请求。
+
+### 一个简单的线程池demo
+
+首先创建一个```Runnable```接口的实现类（当然也可以是```Callable```接口，上面我们也说了两者的区别）
+
+```MyRunnable.java```
+
+```java
+package com.example.main;
+
+import java.util.Date;
+
+/**
+ * @author YanCh
+ * @version v1.0
+ * Create by 2020-12-01 9:21
+ **/
+public class MyRunnable implements Runnable {
+
+    private String command;
+
+    public MyRunnable(String s) {
+        this.command = s;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(Thread.currentThread().getName() + " Start. Time = " + new Date());
+        processCommand();
+        System.out.println(Thread.currentThread().getName() + " End. Time = " + new Date());
+    }
+
+    private void processCommand() {
+        try {
+            Thread.sleep(5000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public String toString() {
+        return "MyRunnable{" +
+                "command='" + command + '\'' +
+                '}';
+    }
+}
+```
+
+编写测试程序，我们这里以阿里巴巴推荐的```ThreadPoolExecutor```构造自定义参数的方式来创建线程池
+
+```ThreadPoolExecutorDemo.java```
+
+```java
+package com.example.main;
+
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * @author YanCh
+ * @version v1.0
+ * Create by 2020-12-01 9:26
+ **/
+public class ThreadPoolExecutorDemo {
+
+    private static final int CORE_POOL_SIZE = 5;
+    private static final int MAX_POOL_SIZE = 10;
+    private static final int QUEUE_CAPACITY = 100;
+    private static final Long KEEP_ALIVE_TIME = 1L;
+
+    public static void main(String[] args) {
+        // 使用阿里巴巴推荐的创建线程池的方式
+        // 通过ThreadPoolExecutor构造函数自定义参数创建
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(
+                CORE_POOL_SIZE,
+                MAX_POOL_SIZE,
+                KEEP_ALIVE_TIME,
+                TimeUnit.SECONDS,
+                new ArrayBlockingQueue<>(QUEUE_CAPACITY),
+                new ThreadPoolExecutor.CallerRunsPolicy());
+        for (int i = 0; i < 10; i++) {
+            // 创建WorkerThread对象（WorkerThread类实现了Runnable接口）
+            Runnable worker = new MyRunnable("" + i);
+            // 执行
+            executor.execute(worker);
+        }
+        executor.shutdown();
+        while (!executor.isTerminated()){ }
+        System.out.println("Finished all threads");
+    }
+
+}
+```
+
+可以看到我们上面指定了：
+
+1. ```corePoolSize```:核心线程数为5
+1. ```maxmumPoolSize```：最大线程数10
+1. ```keepAliveTime```:等待时间为1s
+1. ```unit```：等待时间单位为```TimeUnit.SECONDS```
+1. ```workQueue```：任务队列为```ArrayBlockingQueue```，并且容量为100
+1. ```handler```：饱和策略为```ThreadPoolExecutor.CallerRunsPolicy```
+
+output:
+
+```text
+pool-1-thread-1 Start. Time = Tue Dec 01 09:38:54 CST 2020
+pool-1-thread-2 Start. Time = Tue Dec 01 09:38:54 CST 2020
+pool-1-thread-3 Start. Time = Tue Dec 01 09:38:54 CST 2020
+pool-1-thread-4 Start. Time = Tue Dec 01 09:38:54 CST 2020
+pool-1-thread-5 Start. Time = Tue Dec 01 09:38:54 CST 2020
+pool-1-thread-5 End. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-3 End. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-4 End. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-1 End. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-2 End. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-1 Start. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-4 Start. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-5 Start. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-3 Start. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-2 Start. Time = Tue Dec 01 09:38:59 CST 2020
+pool-1-thread-3 End. Time = Tue Dec 01 09:39:04 CST 2020
+pool-1-thread-1 End. Time = Tue Dec 01 09:39:04 CST 2020
+pool-1-thread-4 End. Time = Tue Dec 01 09:39:04 CST 2020
+pool-1-thread-2 End. Time = Tue Dec 01 09:39:04 CST 2020
+pool-1-thread-5 End. Time = Tue Dec 01 09:39:04 CST 2020
+Finished all threads
+```
+
+### 线程池原理分析
+
+通过上面代码我们可以看出：**线程池每次会同时执行5个任务，这5个任务执行完之后，剩余的5个任务才会被执行**。
+
+为了搞懂线程池的原理，我们需要首先分析一下```execute```方法
+
+```java
+// 存放线程池的运行状态（runState）和线程池内有效线程的数量（workerCount）
+private final AtomicInteger ctl = new AtomicInteger(ctlOf(RUNNING, 0));
+
+private static int workerCountOf(int c) {
+    return c & CAPACITY;
+}
+
+private final BlockingQueue<Runnable> workQueue;
+
+public void execute(Runnable command) {
+    // 如果任务为null，则抛出异常
+    if(command == null) {
+        throw new NullPointerException();
+    }
+    // ctl 中保存的线程池当前的一些状态信息
+    int c = ctl.get();
+
+    // 下面会涉及到3步操作
+    // 1. 首先判断当前线程池中执行的任务是否小于corePoolSize
+    // 如果小于的话，通过addWorker(command, true)新建一个线程，并且将任务(command)添加到该线程中；然后，启动该线程从而执行任务
+    if(workerCountOf(c) < corePoolSize) {
+        if (addWorker(command, true)) {
+            return;
+        }
+        c = ctl.get();
+    }
+    // 2. 如果当前执行的任务数量大于等于corePoolSize的时候就会走到这里
+    // 通过当前isRunning方法判断线程池状态，线程池处于RUNNING状态才会认为可以加入队列，该任务才会被加入进去
+    if(isRunning(c) && workQueue.offer(command)) {
+        int recheck = ctl.get();
+        // 再次获取线程池状态，如果线程池状态不是RUNNING状态就需要从任务队列中移除任务，并尝试判断线程是否全部执行完。同时执行拒绝策略
+        if(!isRunning(recheck) && remove(command)) {
+            reject(command);
+        }else if(workerCountOf(recheck) == 0) {
+            // 如果当前线程空闲的话就创建一个线程并执行
+            addWorker(null, falase);
+        }
+    }else if(!addWorker(command, false)) {
+        // 3. 通过addWorker(command, false) 新建一个线程，并将任务(command) 添加到该线程中；然后，启动该线程从而执行任务
+        // 如果addWorker(command, false)执行失败，则通过reject()执行相应的拒绝策略的内容。
+        reject(command);
+    }
+}
+```
+
+通过下图可以更好的对上面这3步做一个展示
+
+![执行流程](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/2019-7/%E5%9B%BE%E8%A7%A3%E7%BA%BF%E7%A8%8B%E6%B1%A0%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86.png)
+
+> 我们在代码中模拟了10个任务，我们配置的核心线程数为5，等待队列容量为100，所以只可能存在5个任务同时执行，剩下的5个任务会被放到等待队列中去。当前的5个任务执行完成之后才会执行剩下的5个任务
+
+## Atomic原子类
+
+### 介绍一下Atomic原子类
+
+Atomic翻译成中文是原子的意思。在化学上，我们知道原子是构成物质的最小单位，在化学反应中也是不可分割的。在我们这里Atomic是指一个操作是不可中断的。即使是在多个线程一起执行的时候，一个操作一旦开始，就不会被其他线程所干扰。
+
+所以，所谓原子类说简单点就是具有原子/原子操作特征的类；
+
+并发包java.util.concurrent的原子类都存放在java.util.concurrent.atomic下，如下图所属

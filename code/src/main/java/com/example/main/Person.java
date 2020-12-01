@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
@@ -31,6 +32,9 @@ public class Person {
     }
 
     public static void main(String[] args) {
+
+        ReentrantLock lock = new ReentrantLock();
+
         Function<Object, Integer> indexTypeLiveUser = (o) -> {
             // logic
             System.out.println(o);
