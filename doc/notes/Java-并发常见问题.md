@@ -712,7 +712,7 @@ class AtomicIntegerTest {
 ### 能不能介绍一下AtomicInteger类的原理
 
 ```AtomicInteger```线程安全原理简单分析
-
+s
 ```AtomicInteger```类的部分源码：
 
 ```java
@@ -731,3 +731,69 @@ private volatile int value;
 ```AtomicInteger```类主要利用**CAS(compare and swap) + volatile 和 native方法**来保证操作的原子性，从而避免synchronized的高开销，执行效率大大提升
 
 CAS的原理是拿期望的值和原本的的一个值比较，如果相同则更新成新的值。Unsafe类的objectFieldOffset()方法是一个本地方法，这个方法是用来拿到原来的值内存地址，返回值是valueOffset。另外value是一个volatile变量，在内存中可见，因此JVM可以保证任何时刻线程总能拿到该变量的最新值。
+
+## AQS
+
+### AQS介绍
+
+AQS的全称为（AbstractQueuedSynchronizer），这个类在java.util.concurrent.locks包下面。
+
+![AQS](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/2019-6/AQS%E7%B1%BB.png)
+
+AQS是一个用来构建锁和同步器的框架，使用AQS能简单且高效的构建出应用广泛的大量的同步器，比如我们提到的ReentrantLock，Semaphore，其他诸如ReentrantReadWriteLock，SynchronousQueue，FutureTask等等皆是基于AQS的。当然，我们自己也能利用AQS非常轻松的构建出符号我们自己需求的同步器
+
+### AQS原理分析
+
+AQS原理这部分参考了部分博客
+
+> 在买面试中被问到并发知识 的时候，大多都会被问到“请你说一下自己对AQS的理解”。下面给大家一个示例供大家参考，面试不是背题，大家一定要加入自己的思想，即使加入不了自己的思想也要保证自己能够通俗的讲出来而不是背出来
+
+下面大部分内容其实在AQS类注释上已经给出了，不过是英语的看着有点吃力一点，感兴趣的可以看源码
+
+#### AQS原理概览
+
+**AQS核心思想是，如果被请求的共享资源空闲，则将当前请求资源的线程设置为有效的工作线程，并且将共享资源设置为锁定状态。如果被请求的资源被占用，那么就需要一套线程阻塞等待以及唤醒时锁分配的机制，这个机制AQS是用CLH队列实现的，即将暂时获取不到锁的线程加入到队列中去。**
+
+> CLH(Craig,Landin,and Hagersten)队列是一个虚拟的双向队列（虚拟的双向队列即不存在队列实例，仅存在节点之前的关联关系）。AQS是将每条请求共享资源的线程封装成一个CLH锁队列的一个节点（Node）来实现锁的分配
+
+看看AQS（AbstractQueueSynchronizer）原理图
+
+![原理图](https://my-blog-to-use.oss-cn-beijing.aliyuncs.com/2019-6/AQS%E5%8E%9F%E7%90%86%E5%9B%BE.png)
+
+AQS使用一个int成员变量来表示同步状态，通过内置的FIFO队列来完成获取资源队列的排队工作。AQS使用CAS对该同步状态进行原子操作对其值的修改。
+
+```java
+private volatile int state; // 共享变量， 使用volatile修饰保证线程可见性
+```
+
+状态信息通过protected类型的getState,setState,compareAndSetState进行操作
+
+```java
+// 获取同步状态的当前值
+protected final int getState() {
+    return state;
+}
+
+// 设置同步状态的值
+protected final void setState(int newState) {
+    state = newState;
+}
+
+// 原子地（CAS操作）将同步状态值设置为给定值update如果当前同步状态的值等于expect（期望值）
+protected final boolean compareAndSetState(int expect, int update) {
+    return unsafe.compareAndSwapInt(this, stateOffset, expect, update);
+}
+```
+
+#### AQS 对资源的共享方式
+
+**AQS定义两种资源共享方式。**
+
+- **Exclusive**(独占)：只有一个线程能够执行，如```ReentrantLock```。又可分为公平锁和非公平锁：
+  - 公平锁：按照线程在队列中的排队顺序，先拿到者先拿到锁
+  - 非公平锁：当线程需要获取锁时，无视队列顺序直接去抢锁，谁抢到就是谁的
+- **Share**(共享)：多个线程可同时执行，如```Samaphore/CountDownLatch、CyclicBarriter、ReadWriterLock```我们都会在后面讲到
+
+```ReentrantReadWirteLock```可以看成是组合式，因为```ReentrantReadWirteLock```也就是读写锁允许多个线程同时对某一资源进行读。
+
+不同的自定义同步器争用共享资源的方式也不同，自定义同步器在实现时只需要实现对共享资源state的获取以及释放而已，至于具体线程等待队列的维护（如获取资源失败入队/唤醒出队列等），AQS已经在顶层实现好了
