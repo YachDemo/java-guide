@@ -132,6 +132,7 @@ output {
   }
 }
 ```
+5.启动logstash ```bin/logstash -f /etc/logstash/conf.d/logstash-springboot.conf```
 
 ## SpringBoot集成
 

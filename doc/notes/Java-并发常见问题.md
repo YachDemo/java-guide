@@ -797,3 +797,116 @@ protected final boolean compareAndSetState(int expect, int update) {
 ```ReentrantReadWirteLock```可以看成是组合式，因为```ReentrantReadWirteLock```也就是读写锁允许多个线程同时对某一资源进行读。
 
 不同的自定义同步器争用共享资源的方式也不同，自定义同步器在实现时只需要实现对共享资源state的获取以及释放而已，至于具体线程等待队列的维护（如获取资源失败入队/唤醒出队列等），AQS已经在顶层实现好了
+
+#### AQS底层使用了模板方法模式
+
+同步器的设计是基于模板方法模式的，如果自定义同步器一般方式是这样的（模板方法模式的一个很经典的一个应用）：
+
+1. 使用继承```AbstractQueuedSynchronizer```并重写指定的方法。（这样重写方法很简单，无非是对共享资源state的获取和释放）
+1. 将AQS组合在自定义同步组件的实现中，并调用其模板方法，而这些模板方法会调用使用者重写的方法。
+
+这和我们以往通过实现接口的方式有很大区别，这是模板方法很经典的一个运用。
+
+**AQS 使用了模板方法模式，自定义同步器时需要重写下面几个AQS提供的模板方法：**
+
+```java
+isHeldExclusively() // 该线程是否正在独占资源，只有用到conditon需要去实现它。
+tryAcquire(int) // 独占方式。尝试获取资源，成功true 失败false
+tryRelease(int) // 独占方式。尝试释放资源，成功true 失败false
+tryAcquireShared(int) // 共享方式，尝试获取资源 负数返回表示失败 0表示成功 但是没有剩余资源；正数表示成功，且有剩余的资源。
+tryReleaseShared(int) // 共享方式，尝试释放资源 成功返回true 失败false
+```
+
+默认方式下，每个方法都抛出```UnsupportedOperationException```。这些方法的实现必须是内部线程安全的，并且通常应该简短而不是阻塞。AQS类中的其他方法都是final，所以无法被其他类使用，只有这几个方法可以被其他类使用。
+
+以```ReentrantLock```为例，state初始化为0，表示未锁定状态。A线程lock()时，会调用tryAcquire()独占该锁并将state+1。此后，其他线程再tryAcquire()时就会失败，直到A线程unlock()到state=0(即释放锁)为止，其它线程才有机会获取该锁，当然，释放锁之前，A线程自己是可以重复获取此锁的(state会累加)，这就是可重入的概念，但是获取多少次就要释放多少次，这样才能保证state是能回到零态的
+
+再以```CountDownLatch```为例,任务分为个N子线程去执行，state也初始化为N（注意N要与线程个数一致），每个子线程执行完成后countDown()一次，state会CAS（Compare and Swap）减1，等到所有线程执行完后（即state=0），会unpark()主调用线程，然后主调用线程会从```await()```函数返回，继续后余动作。
+
+一般来说，自定义同步器要么是独占方法，要么是共享方式，他们也只需要实现```tryAcquire-tryRelease```、```tryAcquireShared-tryReleaseShared```中的一种即可。但是AQS也支持自定义同步器同时实现独占和共享两种方式，如```ReentrantReadWirteLock```。
+
+#### AQS组件总结
+
+- **```Semaphore```(信号量)-允许多个线程同时访问**：```synchronized```和```ReentrantLock```都是一次只允许一个线程访问某个资源，Semaphore(信号量)可以指定多个线程同时访问某个资源
+- **```CountDownLatch```(倒计时器)**：CountDownLatch是一个同步工具类，用来协调多个线程之间的同步。这个工具通常用来控制线程等待，它可以让某一个线程等待直到倒计时结束，再开始执行
+- **```CyclicBarrier```(循环栅栏)**：```CyclicBarrier```和```CountDownLatch```非常类似，它可以实现线程间的技术等待，但是它的功能比CountDownLatch更加复杂和强大。主要应用场景和```CountDownLatch```类似。```CyclicBarrier```的字面意思是可循环使用（```Cyclic```）的屏障（```Barrier```）。他要做的事，让一组线程到达一个屏障（也可以叫同步点）时被阻塞，直到最后一个线程到达屏障时，屏障才开门，所有被屏障拦截的线程才会继续干活。```CyclicBarrier```默认的构造方法是```CyclicBarrier(int parties)```，其构造方法表示屏障被拦截的线程数量，每个线程调用```await()```方法告诉```CyclicBarrier```我已经到达了屏障，然后当前线程被阻塞
+
+#### 用过CountDownLatch么？什么场景下用的
+
+```CountDownLatch```的作用就是允许多个count线程阻塞在一个地方，直至所有线程的任务都执行完毕。之前在项目中，有一个多线程读取多个文件处理的场景，我用到了```CountDownLatch```。具体场景是下面这样的:
+
+我们需要读取处理6个文件，这6个任务都是没有执行顺序的依赖任务，但是我们需要返回给用户的时候将这几个文件的处理结果进行统计整理。
+
+为此我们定义了一个线程池和count为6的CountDownLatch对象。使用线程池对象处理读取任务，每一个线程处理完之后就将count-1，调用```CountDownLatch```对象的```await()```方法，直到所有文件都读取完之后，才会执行后面的逻辑。
+
+伪代码是下面这样的：
+
+```java
+public class CountDownLatchExample1 {
+    // 处理文件的数量
+    private static final int threadCount = 6;
+
+    public static void mian(String[] args) throws InterruptedExecption {
+        // 创建一个具有固定线程数量的线程池对象（推荐使用构造方法创建）
+        ExecutorService threadPool = Executors.newFixedThreadPool(10);
+        final CountDownLatch countDownLatch = new CountDownLatch(threadCount);
+
+        for(int i = 0; i < threadCount; i++) {
+            final int threadNum = i;
+            threadPool.execute(() -> {
+                try {
+                    // todo 处理文件的业务
+                } catch(InterruptedExecption e) {
+                    e.printStackTrace();
+                } finally {
+                    countDownLatch.countDown();
+                }
+            });
+        }
+        countDownLatch.await();
+        threadPool.shutdown();
+        System.out.println("finish");
+    }
+}
+```
+
+**有没有可以改进的地方呢？**
+
+可以使用```CompletableFuture```类来改进！Java8的CompletableFuture提供了很多对多线程友好的方法，使用它可以很方便的为我们编写多线程程序，什么异步，串行，并行或者等待所有线程执行完任务什么的都非常方便。
+
+```java
+CompleTableFuture<Void> task1 = 
+    CompleTableFuture.supplyAsync(() -> {
+        // todo
+    })
+......
+CompletableFuture<Void> task6 =
+  CompletableFuture.supplyAsync(()->{
+    // todo
+  });
+......
+ CompletableFuture<Void> headerFuture=CompletableFuture.allOf(task1,.....,task6);
+
+  try {
+    headerFuture.join();
+  } catch (Exception ex) {
+    ......
+  }
+System.out.println("all done. ");
+```
+
+上面的代码还可以继续优化，当任务过多的时候，把每一个task都列出来不太现实，可以考虑通过循环来添加任务
+
+```java
+// 文件夹位置
+List<String> filePaths = Arrays.asList(...);
+// 异步处理所有的文件
+List<CompletableFuture<String>> fileFutures = filePaths.stream()
+                                                .map(filePaths -> doSomething(filePath))
+                                                .collect(Collectors.toList());
+// 将他们合并起来
+
+CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+    fileFutures.toArray(new CompletableFuture[fileFutures.size()])
+);
+```
