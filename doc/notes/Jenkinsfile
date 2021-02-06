@@ -1,0 +1,195 @@
+pipeline {
+    // 指定运行节点
+    agent none
+    triggers{
+        GenericTrigger(
+            genericVariables: [
+              [key: 'ref', value: '$.ref']
+             ],
+            causeString: 'Triggered on $ref',
+            token: 'tikbee-package',
+            printContributedVariables: true,
+            printPostContent: true,
+            silentResponse: false,
+            regexpFilterText: '$ref',
+            // 监听master
+            regexpFilterExpression: '^refs/heads/(\\d*|master)$'
+        )
+    }
+    stages {
+        stage('拉取代码') {
+            parallel {
+                stage('node-125拉取代码') {
+                    agent { label "node-125" }
+                    steps {
+                        // 同步代码
+                        git credentialsId: '637ce472-8658-4450-9295-b77dfe048bad', url: 'http://125.88.36.99:8099/YanCh/tikbee.git'
+                        echo "代码同步完成"
+                    }
+                }
+                stage('node-126拉取代码') {
+                    agent { label "node-126" }
+                    steps {
+                        // 同步代码
+                        git credentialsId: '637ce472-8658-4450-9295-b77dfe048bad', url: 'http://125.88.36.99:8099/YanCh/tikbee.git'
+                        echo "代码同步完成"
+                    }
+                }
+            }
+        }
+        stage('打包') {
+            parallel {
+                stage('node-125构建') {
+                    agent { label "node-125" }
+                    steps {
+                        echo "===========构建开始=========="
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/commons-logging-1.2.jar -DgroupId=com.icbc.epay -DartifactId=icbc-commons-logging -Dversion=1.2.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-api-sdk-cop.jar -DgroupId=com.icbc.epay -DartifactId=icbc-api-sdk-cop -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-api-sdk-cop-io.jar -DgroupId=com.icbc.epay -DartifactId=icbc-api-sdk-cop-io -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-ca.jar -DgroupId=com.icbc.epay -DartifactId=icbc-ca -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/InfosecCrypto_Java1_02_JDK14.jar -DgroupId=com.icbc.epay -DartifactId=InfosecCrypto_Java1_02_JDK14 -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/proguard.jar -DgroupId=com.icbc.epay -DartifactId=proguard -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/yly_sdk-1.4.jar -DgroupId=com.yly -DartifactId=yly_sdk-1.4 -Dversion=1.4 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/aliyun-java-sdk-afs-1.0.0.jar -DgroupId=com.aliyun.tikbee -DartifactId=aliyun-java-sdk-afs -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/commons-logging-1.2.jar -DgroupId=com.icbc.epay -DartifactId=icbc-commons-logging -Dversion=1.2.0 -Dpackaging=jar'
+                        sh 'mvn clean package -Dmaven.test.skip=true -Dmaven.compile.fork=true -T 4C -Pprod  -pl bussiness-app -am'
+                        // 复制
+                        sh 'cp bussiness-app/target/tikbeeApp.jar /app/tikbee/'
+                    }
+                }
+                stage('node-126构建') {
+                    agent { label "node-126" }
+                    steps {
+                        echo "===========构建开始=========="
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/commons-logging-1.2.jar -DgroupId=com.icbc.epay -DartifactId=icbc-commons-logging -Dversion=1.2.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-api-sdk-cop.jar -DgroupId=com.icbc.epay -DartifactId=icbc-api-sdk-cop -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-api-sdk-cop-io.jar -DgroupId=com.icbc.epay -DartifactId=icbc-api-sdk-cop-io -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/icbc-ca.jar -DgroupId=com.icbc.epay -DartifactId=icbc-ca -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/InfosecCrypto_Java1_02_JDK14.jar -DgroupId=com.icbc.epay -DartifactId=InfosecCrypto_Java1_02_JDK14 -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/proguard.jar -DgroupId=com.icbc.epay -DartifactId=proguard -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/yly_sdk-1.4.jar -DgroupId=com.yly -DartifactId=yly_sdk-1.4 -Dversion=1.4 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/aliyun-java-sdk-afs-1.0.0.jar -DgroupId=com.aliyun.tikbee -DartifactId=aliyun-java-sdk-afs -Dversion=1.0.0 -Dpackaging=jar'
+
+                        sh 'mvn install:install-file -Dfile=tools-util/src/main/resources/libs/commons-logging-1.2.jar -DgroupId=com.icbc.epay -DartifactId=icbc-commons-logging -Dversion=1.2.0 -Dpackaging=jar'
+                        sh 'mvn clean package -Dmaven.test.skip=true -Dmaven.compile.fork=true -T 4C -Pprod  -pl bussiness-app -am'
+                        // 复制
+                        sh 'cp bussiness-app/target/tikbeeApp.jar /app/tikbee/'
+                    }
+                }
+            }
+        }
+        stage('切换备份负载') {
+            parallel {
+                stage("node-125切换备份负载") {
+                    agent { label 'node-125' }
+                    steps {
+                        // 切换配置文件
+                        sh 'mv /www/server/nginx/conf/nginx.conf /www/server/nginx/conf/nginx.conf.8080'
+                        sh 'mv /www/server/nginx/conf/nginx.conf.8081 /www/server/nginx/conf/nginx.conf'
+                        // 刷新配置文件
+                        sh '/www/server/nginx/sbin/nginx -s reload'
+                    }
+                }
+                stage("node-126切换备份负载") {
+                    agent { label 'node-126' }
+                    steps {
+                        // 切换配置文件
+                        sh 'mv /www/server/nginx/conf/nginx.conf /www/server/nginx/conf/nginx.conf.8080'
+                        sh 'mv /www/server/nginx/conf/nginx.conf.8081 /www/server/nginx/conf/nginx.conf'
+                        // 刷新配置文件
+                        sh '/www/server/nginx/sbin/nginx -s reload'
+                    }
+                }
+            }
+        }
+        stage('启动服务') {
+            parallel {
+                stage("node-125启动服务") {
+                    agent { label 'node-125' }
+                    steps {
+                        // 启动服务
+                        echo "开始启动服务"
+                        // 启动app
+                        echo "重启app"
+                        sh 'JENKINS_NODE_COOKIE=dontKillMe sh /app/tikbee/run-app.sh -start'
+                        // 延迟20秒，等待服务启动
+                        sleep 20
+                        echo "8080服务启动完成"
+                    }
+                }
+                stage("node-126启动服务") {
+                    agent { label 'node-126' }
+                    steps {
+                        // 启动服务
+                        echo "开始启动服务"
+                        // 启动app
+                        echo "重启app"
+                        sh 'JENKINS_NODE_COOKIE=dontKillMe sh /app/tikbee/run-app.sh -start'
+                        // 延迟20秒，等待服务启动
+                        sleep 20
+                        echo "8080服务启动完成"
+                    }
+                }
+            }
+        }
+        stage('切换主负载') {
+            parallel {
+                stage("node-125切换主负载") {
+                    agent { label 'node-125' }
+                    steps {
+                        // 切换配置文件
+                        sh 'mv /www/server/nginx/conf/nginx.conf /www/server/nginx/conf/nginx.conf.8081'
+                        sh 'mv /www/server/nginx/conf/nginx.conf.8080 /www/server/nginx/conf/nginx.conf'
+                        // 刷新配置文件
+                        sh '/www/server/nginx/sbin/nginx -s reload'
+                        echo "===========切换完成================"
+                    }
+                    post {
+                        // 成功触发备份包
+                        success {
+                            // 备份
+                            sh 'cp bussiness-app/target/tikbeeApp.jar /app/tikbee-bak/'
+                            // 重启备份
+                            sh 'JENKINS_NODE_COOKIE=dontKillMe sh /app/tikbee-bak/run-app.sh -start'
+                        }
+                    }
+                }
+                stage("node-126切换主负载") {
+                    agent { label 'node-126' }
+                    steps {
+                        // 切换配置文件
+                        sh 'mv /www/server/nginx/conf/nginx.conf /www/server/nginx/conf/nginx.conf.8081'
+                        sh 'mv /www/server/nginx/conf/nginx.conf.8080 /www/server/nginx/conf/nginx.conf'
+                        // 刷新配置文件
+                        sh '/www/server/nginx/sbin/nginx -s reload'
+                        echo "===========切换完成================"
+                    }
+                    post {
+                        // 成功触发备份包
+                        success {
+                            // 备份
+                            sh 'cp bussiness-app/target/tikbeeApp.jar /app/tikbee-bak/'
+                            // 重启备份
+                            sh 'JENKINS_NODE_COOKIE=dontKillMe sh /app/tikbee-bak/run-app.sh -start'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

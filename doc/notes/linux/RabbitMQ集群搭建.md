@@ -190,3 +190,5 @@ stream {
 ```
 
 ![nginx](../pic/rabbitmq6.png)
+
+> 参考 https://blog.51cto.com/11134648/2155934
